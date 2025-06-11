@@ -1,11 +1,14 @@
 package jamie.tpa.darksmp;
 
-import jamie.tpa.darksmp.TPARequest.Type;
-import org.bukkit.*;
+import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
+import org.bukkit.Particle;
+import org.bukkit.Sound;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import org.bukkit.Location;
 
 public class TPAcceptCommand implements CommandExecutor {
 
@@ -18,63 +21,73 @@ public class TPAcceptCommand implements CommandExecutor {
         }
 
         Player target = (Player) sender;
+        Player requester;
 
-        if (args.length != 1) {
-            target.sendMessage(ChatColor.RED + "Usage: /tpaccept <player>");
-            return true;
-        }
-
-        Player requester = Bukkit.getPlayerExact(args[0]);
-
-        if (requester == null || !requester.isOnline()) {
-            target.sendMessage(ChatColor.RED + "That player is not online.");
-            return true;
-        }
-
-        // Check if request exists and matches sender
         TPARequest request = TPAManager.getRequest(target);
 
-        if (request == null || !request.getSender().equals(requester.getUniqueId())) {
-            target.sendMessage(ChatColor.RED + "No valid request from that player.");
+        if (request == null) {
+            target.sendMessage(ChatColor.RED + "You have no pending teleport requests.");
             return true;
         }
 
-        Location targetLoc = target.getLocation();
-        Location requesterLoc = requester.getLocation();
+        if (args.length == 1) {
+            Player specified = Bukkit.getPlayerExact(args[0]);
+            if (specified == null || !specified.isOnline()) {
+                target.sendMessage(ChatColor.RED + "That player is not online.");
+                return true;
+            }
 
-        // Effects before teleport
-        playTeleportEffect(requester);
-        playTeleportEffect(target);
+            if (!request.getSender().equals(specified.getUniqueId())) {
+                target.sendMessage(ChatColor.RED + "That player didn't send you a request.");
+                return true;
+            }
 
-        switch (request.getType()) {
-            case TPA:
-                requester.teleport(targetLoc);
-                requester.sendMessage(ChatColor.GREEN + "Teleporting to " + target.getName() + "...");
-                target.sendMessage(ChatColor.AQUA + requester.getName() + " is teleporting to you.");
-                break;
-
-            case TPAHERE:
-                target.teleport(requesterLoc);
-                target.sendMessage(ChatColor.GREEN + "Teleporting to " + requester.getName() + "...");
-                requester.sendMessage(ChatColor.AQUA + target.getName() + " is teleporting to you.");
-                break;
-
-            case TPASWAP:
-                requester.teleport(targetLoc);
-                target.teleport(requesterLoc);
-                requester.sendMessage(ChatColor.LIGHT_PURPLE + "Swapped positions with " + target.getName() + ".");
-                target.sendMessage(ChatColor.LIGHT_PURPLE + "Swapped positions with " + requester.getName() + ".");
-                break;
+            requester = specified;
+        } else {
+            requester = Bukkit.getPlayer(request.getSender());
+            if (requester == null || !requester.isOnline()) {
+                target.sendMessage(ChatColor.RED + "The player who requested is no longer online.");
+                TPAManager.clearRequest(target);
+                return true;
+            }
         }
 
         TPAManager.clearRequest(target);
+
+        Location requesterLocation = requester.getLocation();
+        Location targetLocation = target.getLocation();
+
+        switch (request.getType()) {
+            case TPA:
+                spawnParticles(requester);
+                requester.sendMessage(ChatColor.GREEN + "Teleporting...");
+                requester.teleport(target);
+                break;
+
+            case TPAHERE:
+                spawnParticles(target);
+                target.sendMessage(ChatColor.GREEN + "Teleporting...");
+                target.teleport(requester);
+                break;
+
+            case TPASWAP:
+                spawnParticles(target);
+                spawnParticles(requester);
+                target.sendMessage(ChatColor.GREEN + "Swapping locations...");
+                requester.sendMessage(ChatColor.GREEN + "Swapping locations...");
+
+                target.teleport(requesterLocation);
+                requester.teleport(targetLocation);
+                break;
+        }
+
+        requester.playSound(requester.getLocation(), Sound.ENTITY_ENDERMAN_TELEPORT, 1, 1);
+        target.playSound(target.getLocation(), Sound.ENTITY_ENDERMAN_TELEPORT, 1, 1);
+
         return true;
     }
 
-    private void playTeleportEffect(Player player) {
-        World world = player.getWorld();
-        Location loc = player.getLocation();
-        world.spawnParticle(Particle.PORTAL, loc, 80, 1, 1, 1, 0.05);
-        world.spawnParticle(Particle.END_ROD, loc, 40, 0.5, 1, 0.5, 0.03);
+    private void spawnParticles(Player player) {
+        player.getWorld().spawnParticle(Particle.PORTAL, player.getLocation(), 100, 0.5, 1, 0.5, 0.2);
     }
 }
